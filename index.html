@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI-Driven Water System Monitoring</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4682b4;
+            padding-bottom: 10px;
+        }
+        
+        h2 {
+            color: #444;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        
+        .content-section {
+            margin-bottom: 30px;
+            text-align: justify;
+        }
+        
+        .figure-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        .figure-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        
+        .figure-caption {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        #visualization-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        svg {
+            border: 1px solid #ccc;
+            background: #fafafa;
+        }
+        
+        circle {
+            fill: steelblue;
+            stroke: black;
+            stroke-width: 1px;
+            cursor: pointer;
+        }
+        
+        line.edge {
+            stroke: rgb(232,232,19);
+            stroke-width: 2px;
+            marker-end: url(#arrow);
+            cursor: pointer;
+        }
+        
+        text {
+            font-size: 10px;
+            fill: black;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: navy;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI-Driven Forecasting and Monitoring of Urban Water System</h1>
+    
+    <div class="content-section">
+        <h2>1. Introduction</h2>
+        <p>
+            Urban underground water and wastewater pipelines are critical infrastructure for city operations, 
+            enabling the efficient transport of water and wastewater. However, these systems are costly to 
+            construct and maintain, and as they age, they become increasingly vulnerable to fractures and 
+            faulty connections. Such anomalies—including leaks, infiltrations, and blockages—result in 
+            substantial water loss, environmental contamination, and rising repair costs. Given these 
+            challenges, accurate detection of faulty connections and fractures is essential. Traditional 
+            approaches, however, are limited: manual inspections often suffer from delays and incomplete 
+            coverage, while dense sensor deployments remain economically prohibitive due to high installation 
+            and maintenance costs. Other assessment techniques, such as closed-circuit television (CCTV) 
+            surveys and smoke testing, offer more comprehensive diagnostics but are both costly and 
+            labor-intensive.
+        </p>
+        
+        <div class="figure-container">
+            <img src="figure_png/figure1.png" alt="Graph representation of campus sewer network" style="max-width: 85%;">
+            <div class="figure-caption">Figure 1: Graph representation of the campus sewer network.</div>
+        </div>
+        
+        <p>
+            To address this challenge, we present an AI-enhanced monitoring system that deploys sparse 
+            sensors at manholes to collect real-world water (RWW) data such as inflow and depth, augmented 
+            by hydraulic simulations for full network coverage. Figure 1 shows the graph representation of 
+            the campus sewer network.
+        </p>
+    </div>
+    
+    <div class="content-section">
+        <h2>2. Modeling</h2>
+        <p>
+            In recent years, AI has advanced rapidly, and developing dedicated AI techniques for urban 
+            applications offers a promising solution. To address this challenge, we present an AI-enhanced 
+            monitoring system that deploys sparse sensors at manholes to collect real-world water (RWW) 
+            data such as inflow and depth, augmented by hydraulic simulations for full network coverage. 
+            This RWW data then feeds into HydroNet, our spatiotemporal graph neural network that represents 
+            the water and wastewater network as a directed graph—nodes as manholes, edges as pipes with 
+            physical attributes (diameter, slope, material). By incorporating these pipeline properties 
+            directly into message passing, HydroNet learns normal hydraulic patterns and flags anomalies 
+            through deviation detection. We deployed this integrated AI and remote-sensor framework on a 
+            campus network and collected over a year of real-world data for modeling and evaluation.
+        </p>
+
+        <div class="figure-container">
+            <img src="figure_png/figure2.png" alt="Graph representation of campus sewer network" style="max-width: 80%;">
+            <div class="figure-caption">Figure 2: An example of GNN layers and how message aggregated through edges.</div>
+        </div>
+
+        <p>
+            The network is modeled as a directed graph <em>G</em>=(<em>V</em>, <em>E</em>), where <em>V</em> denotes 
+            manholes (nodes) and <em>E</em> represents pipes (edges) for downstream message passing (Figure 2). 
+            This structure enables propagation of anomaly impacts, e.g., from an upstream leak to downstream nodes.
+        </p>
+        
+        
+        <div id="visualization-container">
+            <svg id="chart" width="1000" height="700"></svg>
+            <div class="figure-caption">
+                Figure 3: Interactive visualization demonstrating the transformation of campus sewer network 
+                into a spatiotemporal graph structure for water system analysis
+            </div>
+        </div>
+    </div>
+
+
+
+    <div class="content-section">
+        <h2>3. Water System Modeling Cases · Interactive Illustration</h2>
+        <p>
+            As introduced in Figure 3, we build the model by deploying sparse sensors at manholes in a real-world
+            wastewater network to collect real-world water (RWW) data such as inflow and depth, combined with
+            hydraulic simulation–based augmentation to achieve full-network coverage. We represent the water and
+            wastewater network as a directed graph (nodes are manholes, edges are pipes with physical attributes
+            such as diameter, slope, and material). HydroNet is a spatiotemporal graph neural network that
+            incorporates these pipeline properties directly into message passing, learns normal hydraulic patterns,
+            and flags anomalies through deviation detection.
+        </p>
+        <p>This section presents interactive cases that show how the model works:</p>
+        <ol>
+            <li><strong>Forecast future flow and water depth</strong>: ingest historical observations and simulation-augmented data to produce node-level time series forecasts with uncertainty bands. Figure4 shows the Forecasting.</li>
+            <li><strong>Predict blockages</strong>: combine pipe attributes and flow dynamics to localize likely congested segments and generate a risk score.</li>
+            <li><strong>Detect leaks</strong>: use mass-balance deviations and localized water-level anomalies to identify persistent or sudden leakage and estimate the probable location range.</li>
+            <li><strong>LLM-generated report</strong>: automatically compile forecasts and anomalies into summaries, key metrics, plausible causes, and maintenance recommendations, with one-click export.</li>
+        </ol>
+
+
+
+
+        <div id="forecast-container"  style="text-align: center;">
+            <svg id="forecast-chart" width="1000" height="700"></svg>
+            <div class="figure-caption">
+                    Figure 4: Time series forecasting with uncertainty bands for water depth and inflow
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip" class="tooltip"></div>
+    <script src="figure3_network.js"></script>
+    <script src="figure4_forecast.js"></script>
+
+</body>
+</html>
