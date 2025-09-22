@@ -2,220 +2,172 @@
 const forecastTooltip = d3.select("#tooltip");
 
 // Global variables
-let forecastData = [];
-let selectedNode = null;
-let forecastSteps = 1;
-let currentMetric = 'depth'; // 'depth' or 'rate'
+let forecastData = {};
 let depthData = [];
 let rateData = [];
-
-// Simple moving average forecasting function
-function simpleMovingAveragePredict(data, steps, windowSize = 3) {
-    const forecasts = [];
-    let currentData = [...data];
-    
-    for (let step = 0; step < steps; step++) {
-        // Take the last windowSize points for moving average
-        const lastPoints = currentData.slice(-windowSize);
-        const average = lastPoints.reduce((sum, val) => sum + val, 0) / lastPoints.length;
-        
-        // Add some trend if data length > windowSize
-        let trend = 0;
-        if (currentData.length >= windowSize + 1) {
-            const recentAvg = lastPoints.reduce((sum, val) => sum + val, 0) / lastPoints.length;
-            const previousPoints = currentData.slice(-(windowSize + 1), -1);
-            const previousAvg = previousPoints.reduce((sum, val) => sum + val, 0) / previousPoints.length;
-            trend = (recentAvg - previousAvg) * 0.3; // Damped trend
-        }
-        
-        const prediction = average + trend + (Math.random() - 0.5) * average * 0.05; // Add small noise
-        forecasts.push(Math.max(0, prediction)); // Ensure non-negative values
-        currentData.push(prediction); // Add prediction to data for next iteration
-    }
-    
-    return forecasts;
-}
-
-// Linear regression forecasting function
-function linearRegressionPredict(data, steps) {
-    const n = data.length;
-    const x = Array.from({length: n}, (_, i) => i);
-    const y = data;
-    
-    // Calculate linear regression parameters
-    const sumX = x.reduce((a, b) => a + b, 0);
-    const sumY = y.reduce((a, b) => a + b, 0);
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-    const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
-    
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-    const intercept = (sumY - slope * sumX) / n;
-    
-    // Generate predictions
-    const forecasts = [];
-    for (let step = 1; step <= steps; step++) {
-        const prediction = intercept + slope * (n + step - 1);
-        forecasts.push(Math.max(0, prediction)); // Ensure non-negative values
-    }
-    
-    return forecasts;
-}
-
-// Parse CSV data
-function parseCSV(csvText) {
-    const lines = csvText.trim().split('\n');
-    const headers = lines[0].split(',');
-    const data = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',');
-        const row = {};
-        headers.forEach((header, index) => {
-            row[header.trim()] = values[index] ? values[index].trim() : '';
-        });
-        data.push(row);
-    }
-    
-    return data;
-}
+let allNodes = [];
+let selectedNode = '';
+let forecastSteps = 1;
+let currentMetric = 'depth'; // 'depth' or 'rate'
 
 // Load CSV data
 async function loadCSVData() {
     try {
-        // Try to read the CSV files
-        let depthCSV, rateCSV;
+        // Load both CSV files
+        const depthCsv = await d3.csv("Flow_depth.csv");
+        const rateCsv = await d3.csv("Flow_rate.csv");
         
-        try {
-            const depthBuffer = await window.fs.readFile('Flow_depth.csv', { encoding: 'utf8' });
-            depthCSV = depthBuffer;
-        } catch (error) {
-            console.warn('Could not read Flow_depth.csv, using sample data');
-            depthCSV = generateSampleDepthCSV();
-        }
+        depthData = depthCsv;
+        rateData = rateCsv;
         
-        try {
-            const rateBuffer = await window.fs.readFile('Flow_rate.csv', { encoding: 'utf8' });
-            rateCSV = rateBuffer;
-        } catch (error) {
-            console.warn('Could not read Flow_rate.csv, using sample data');
-            rateCSV = generateSampleRateCSV();
-        }
+        // Extract node names from columns (excluding period, period_start, period_end)
+        const excludeColumns = ['period', 'period_start', 'period_end'];
+        allNodes = Object.keys(depthData[0]).filter(col => !excludeColumns.includes(col));
         
-        depthData = parseCSV(depthCSV);
-        rateData = parseCSV(rateCSV);
+        // Set default selected node
+        selectedNode = allNodes[0];
         
-        // Process the data
-        processCSVData();
+        // Process the data for forecasting
+        processDataForForecasting();
+        
+        console.log("CSV data loaded successfully");
+        console.log("Available nodes:", allNodes);
+        console.log("Sample depth data:", depthData.slice(0, 2));
+        console.log("Sample rate data:", rateData.slice(0, 2));
         
     } catch (error) {
-        console.error('Error loading CSV data:', error);
-        // Fallback to sample data
-        generateSampleCSVData();
+        console.error("Error loading CSV data:", error);
+        // Fallback to dummy data if CSV loading fails
+        generateSampleData();
     }
 }
 
-// Generate sample CSV data if files are not available
-function generateSampleDepthCSV() {
-    let csv = 'period,92090040,92090041,92090042,92090070,92090090,92090100,92100100,92100110,92100120,92100130,92100150,92100160,92100170,92100190,92100220,92100230,92100240,92100250,92100260,92100280,92100300,92100320,OF-1,period_start,period_end\n';
+// Process data for forecasting structure
+function processDataForForecasting() {
+    forecastData = {};
     
-    for (let i = 1; i <= 12; i++) {
-        let row = `t${i}`;
-        // Generate random data for each node
-        for (let j = 0; j < 23; j++) {
-            const baseValue = 500 + Math.random() * 500;
-            const seasonality = Math.sin(i * 0.5) * 100;
-            const noise = (Math.random() - 0.5) * 50;
-            row += `,${(baseValue + seasonality + noise).toFixed(2)}`;
-        }
-        row += `,2023-${String(i).padStart(2, '0')}-01 00:00:00,2023-${String(i).padStart(2, '0')}-15 23:50:00\n`;
-        csv += row;
-    }
-    return csv;
-}
-
-function generateSampleRateCSV() {
-    let csv = 'period,92090040,92090041,92090042,92090070,92090090,92090100,92100100,92100110,92100120,92100130,92100150,92100160,92100170,92100190,92100220,92100230,92100240,92100250,92100260,92100280,92100300,92100320,OF-1,period_start,period_end\n';
-    
-    for (let i = 1; i <= 12; i++) {
-        let row = `t${i}`;
-        // Generate random data for each node
-        for (let j = 0; j < 23; j++) {
-            const baseValue = 200 + Math.random() * 300;
-            const seasonality = Math.sin(i * 0.3) * 50;
-            const noise = (Math.random() - 0.5) * 30;
-            row += `,${(baseValue + seasonality + noise).toFixed(2)}`;
-        }
-        row += `,2023-${String(i).padStart(2, '0')}-01 00:00:00,2023-${String(i).padStart(2, '0')}-15 23:50:00\n`;
-        csv += row;
-    }
-    return csv;
-}
-
-function generateSampleCSVData() {
-    depthData = parseCSV(generateSampleDepthCSV());
-    rateData = parseCSV(generateSampleRateCSV());
-    processCSVData();
-}
-
-// Process CSV data into the format needed for visualization
-function processCSVData() {
-    // Get all node columns (exclude period, period_start, period_end)
-    const nodeColumns = Object.keys(depthData[0]).filter(col => 
-        !['period', 'period_start', 'period_end'].includes(col)
-    );
-    
-    forecastData = [];
-    
-    nodeColumns.forEach(nodeId => {
-        const nodeData = {
+    allNodes.forEach(nodeId => {
+        forecastData[nodeId] = {
             nodeId: nodeId,
-            historical: [],
-            forecast: []
+            historical: {
+                depth: [],
+                rate: []
+            }
         };
         
-        // Extract historical data for depth
+        // Process depth data
         depthData.forEach((row, index) => {
-            const value = parseFloat(row[nodeId]);
-            if (!isNaN(value)) {
-                nodeData.historical.push({
+            if (row[nodeId] && !isNaN(parseFloat(row[nodeId]))) {
+                forecastData[nodeId].historical.depth.push({
                     time: index,
-                    depth: value,
-                    rate: rateData[index] ? parseFloat(rateData[index][nodeId]) || 0 : 0
+                    period: row.period,
+                    period_start: row.period_start,
+                    period_end: row.period_end,
+                    value: parseFloat(row[nodeId])
                 });
             }
         });
         
-        // Generate forecasts using linear regression for better predictions
-        if (nodeData.historical.length > 0) {
-            const depthValues = nodeData.historical.map(d => d.depth);
-            const rateValues = nodeData.historical.map(d => d.rate);
-            
-            // Generate forecasts for up to 12 steps
-            const depthForecasts = linearRegressionPredict(depthValues, 12);
-            const rateForecasts = linearRegressionPredict(rateValues, 12);
-            
-            for (let step = 0; step < 12; step++) {
-                nodeData.forecast.push({
-                    time: nodeData.historical.length + step,
-                    depth: depthForecasts[step],
-                    rate: rateForecasts[step]
+        // Process rate data
+        rateData.forEach((row, index) => {
+            if (row[nodeId] && !isNaN(parseFloat(row[nodeId]))) {
+                forecastData[nodeId].historical.rate.push({
+                    time: index,
+                    period: row.period,
+                    period_start: row.period_start,
+                    period_end: row.period_end,
+                    value: parseFloat(row[nodeId])
                 });
             }
-        }
-        
-        forecastData.push(nodeData);
+        });
     });
+}
+
+// Simple forecasting using moving average and trend
+function generateForecast(historicalData, steps) {
+    if (historicalData.length < 2) return [];
     
-    // Set default selected node
-    if (forecastData.length > 0) {
-        selectedNode = forecastData[0].nodeId;
+    const forecast = [];
+    const windowSize = Math.min(3, historicalData.length); // Use last 3 points for trend
+    
+    // Calculate moving average and trend
+    let sum = 0;
+    let trendSum = 0;
+    
+    for (let i = historicalData.length - windowSize; i < historicalData.length; i++) {
+        sum += historicalData[i].value;
+        if (i > historicalData.length - windowSize) {
+            trendSum += historicalData[i].value - historicalData[i-1].value;
+        }
     }
     
-    console.log('Processed forecast data:', forecastData);
+    const avg = sum / windowSize;
+    const trend = windowSize > 1 ? trendSum / (windowSize - 1) : 0;
+    
+    // Generate forecast points
+    const lastTime = historicalData[historicalData.length - 1].time;
+    const lastPeriod = historicalData[historicalData.length - 1].period;
+    
+    for (let i = 1; i <= steps; i++) {
+        // Simple linear forecast with some noise reduction
+        const forecastValue = avg + (trend * i * 0.7); // Reduce trend impact for stability
+        
+        forecast.push({
+            time: lastTime + i,
+            period: `${lastPeriod}-forecast-${i}`,
+            period_start: 'Forecasted',
+            period_end: 'Forecasted',
+            value: Math.max(0, forecastValue) // Ensure non-negative values
+        });
+    }
+    
+    return forecast;
+}
+
+// Fallback sample data generation (in case CSV loading fails)
+function generateSampleData() {
+    allNodes = ['92090040', '92090041', '92090042', '92090070', '92090090'];
+    selectedNode = allNodes[0];
+    forecastData = {};
+    
+    allNodes.forEach(nodeId => {
+        forecastData[nodeId] = {
+            nodeId: nodeId,
+            historical: {
+                depth: [],
+                rate: []
+            }
+        };
+        
+        // Generate sample historical data
+        let baseDepth = 2 + Math.random() * 3;
+        let baseRate = 10 + Math.random() * 20;
+        
+        for (let t = 0; t < 12; t++) {
+            forecastData[nodeId].historical.depth.push({
+                time: t,
+                period: `2023-${10 + Math.floor(t/6)}-${(t % 6) + 1}`,
+                period_start: `2023-${10 + Math.floor(t/6)}-${(t % 6) + 1} 00:00:00`,
+                period_end: `2023-${10 + Math.floor(t/6)}-${(t % 6) + 1} 23:59:59`,
+                value: baseDepth + Math.sin(t * 0.5) * 0.5 + (Math.random() - 0.5) * 0.3
+            });
+            
+            forecastData[nodeId].historical.rate.push({
+                time: t,
+                period: `2023-${10 + Math.floor(t/6)}-${(t % 6) + 1}`,
+                period_start: `2023-${10 + Math.floor(t/6)}-${(t % 6) + 1} 00:00:00`,
+                period_end: `2023-${10 + Math.floor(t/6)}-${(t % 6) + 1} 23:59:59`,
+                value: baseRate + Math.sin(t * 0.3) * 5 + (Math.random() - 0.5) * 2
+            });
+        }
+    });
 }
 
 // Initialize the forecast chart
-function initForecastChart() {
+async function initForecastChart() {
+    // Load CSV data first
+    await loadCSVData();
+    
     const container = d3.select("#forecast-container");
     
     // Add controls if not exists
@@ -233,6 +185,15 @@ function initForecastChart() {
             .style("padding", "5px")
             .style("margin-right", "20px");
         
+        nodeSelect.selectAll("option")
+            .data(allNodes)
+            .enter()
+            .append("option")
+            .attr("value", d => d)
+            .text(d => d);
+        
+        nodeSelect.property("value", selectedNode);
+        
         nodeSelect.on("change", function() {
             selectedNode = this.value;
             updateForecastVisualization();
@@ -243,8 +204,8 @@ function initForecastChart() {
         metricSelector.append("label").text("Metric: ").style("margin-right", "5px");
         
         const metrics = [
-            {value: 'depth', label: 'Depth'},
-            {value: 'rate', label: 'Rate'}
+            {value: 'depth', label: 'Depth (ft)'},
+            {value: 'rate', label: 'Rate (cfs)'}
         ];
         
         metricSelector.selectAll("button")
@@ -290,16 +251,11 @@ function initForecastChart() {
     
     // Create SVG
     const svg = d3.select("#forecast-chart");
-    if (svg.empty()) {
-        console.error("SVG element #forecast-chart not found");
-        return;
-    }
-    
     svg.selectAll("*").remove(); // Clear existing content
     
-    const width = +svg.attr("width") || 800;
-    const height = +svg.attr("height") || 400;
-    const margin = {top: 40, right: 80, bottom: 60, left: 60};
+    const width = +svg.attr("width");
+    const height = +svg.attr("height");
+    const margin = {top: 40, right: 80, bottom: 80, left: 80};
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
     
@@ -315,32 +271,7 @@ function initForecastChart() {
         .style("font-weight", "bold")
         .text("Time Series Forecasting for Water System Monitoring");
     
-    // Update node selector options
-    updateNodeSelector();
     updateForecastVisualization();
-}
-
-// Update node selector with available nodes
-function updateNodeSelector() {
-    const nodeSelect = d3.select("#node-selector");
-    if (nodeSelect.empty()) return;
-    
-    nodeSelect.selectAll("option").remove();
-    
-    nodeSelect.selectAll("option")
-        .data(forecastData)
-        .enter()
-        .append("option")
-        .attr("value", d => d.nodeId)
-        .text(d => d.nodeId);
-    
-    // Set selected node
-    if (selectedNode && forecastData.find(d => d.nodeId === selectedNode)) {
-        nodeSelect.property("value", selectedNode);
-    } else if (forecastData.length > 0) {
-        selectedNode = forecastData[0].nodeId;
-        nodeSelect.property("value", selectedNode);
-    }
 }
 
 // Update forecast steps
@@ -357,12 +288,15 @@ function updateForecast(steps) {
 
 // Update the visualization
 function updateForecastVisualization() {
-    const svg = d3.select("#forecast-chart");
-    if (svg.empty() || !selectedNode || forecastData.length === 0) return;
+    if (!forecastData[selectedNode]) {
+        console.error("No data for selected node:", selectedNode);
+        return;
+    }
     
-    const width = +svg.attr("width") || 800;
-    const height = +svg.attr("height") || 400;
-    const margin = {top: 40, right: 80, bottom: 60, left: 60};
+    const svg = d3.select("#forecast-chart");
+    const width = +svg.attr("width");
+    const height = +svg.attr("height");
+    const margin = {top: 40, right: 80, bottom: 80, left: 80};
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
     
@@ -372,36 +306,46 @@ function updateForecastVisualization() {
     const g = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
     
-    // Get data for selected node
-    const nodeData = forecastData.find(d => d.nodeId === selectedNode);
-    if (!nodeData) return;
+    // Get data for selected node and metric
+    const historicalData = forecastData[selectedNode].historical[currentMetric];
+    const forecastToShow = generateForecast(historicalData, forecastSteps);
     
-    const historicalData = nodeData.historical;
-    const forecastToShow = nodeData.forecast.slice(0, forecastSteps);
+    if (historicalData.length === 0) {
+        // Show "No data available" message
+        g.append("text")
+            .attr("x", innerWidth / 2)
+            .attr("y", innerHeight / 2)
+            .attr("text-anchor", "middle")
+            .style("font-size", "18px")
+            .style("fill", "#999")
+            .text(`No ${currentMetric} data available for node ${selectedNode}`);
+        return;
+    }
     
     // Combine data for scales
     const allData = [...historicalData, ...forecastToShow];
     
     // Create scales
     const xScale = d3.scaleLinear()
-        .domain([0, historicalData.length - 1 + forecastSteps])
+        .domain([0, Math.max(historicalData.length - 1 + forecastSteps, historicalData.length)])
         .range([0, innerWidth]);
     
-    const yExtent = d3.extent(allData, d => d[currentMetric]);
+    const yExtent = d3.extent(allData, d => d.value);
+    const yPadding = (yExtent[1] - yExtent[0]) * 0.1;
     
     const yScale = d3.scaleLinear()
-        .domain([Math.min(0, yExtent[0] * 0.9), yExtent[1] * 1.1])
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
         .range([innerHeight, 0]);
     
     // Create line generators
     const historicalLine = d3.line()
         .x(d => xScale(d.time))
-        .y(d => yScale(d[currentMetric]))
+        .y(d => yScale(d.value))
         .curve(d3.curveMonotoneX);
     
     const forecastLine = d3.line()
         .x(d => xScale(d.time))
-        .y(d => yScale(d[currentMetric]))
+        .y(d => yScale(d.value))
         .curve(d3.curveMonotoneX);
     
     // Add grid lines
@@ -426,67 +370,80 @@ function updateForecastVisualization() {
     
     // Add axes
     const xAxis = d3.axisBottom(xScale)
-        .tickFormat(d => d < historicalData.length ? `t${Math.floor(d)+1}` : `t${Math.floor(d)+1} (pred)`);
+        .tickFormat(d => {
+            const index = Math.floor(d);
+            if (index < historicalData.length) {
+                return historicalData[index] ? historicalData[index].period : `t${index}`;
+            } else {
+                return `pred${index - historicalData.length + 1}`;
+            }
+        });
     
     const yAxis = d3.axisLeft(yScale)
-        .tickFormat(d => d.toFixed(1));
+        .tickFormat(d => d.toFixed(2));
     
     g.append("g")
         .attr("transform", `translate(0,${innerHeight})`)
         .call(xAxis)
-        .append("text")
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .attr("dx", "-.8em")
+        .attr("dy", ".15em")
+        .attr("transform", "rotate(-45)");
+    
+    g.append("text")
         .attr("x", innerWidth / 2)
-        .attr("y", 40)
+        .attr("y", innerHeight + 60)
         .attr("fill", "black")
         .style("text-anchor", "middle")
-        .text("Time Steps");
+        .text("Time Period");
     
     g.append("g")
         .call(yAxis)
         .append("text")
         .attr("transform", "rotate(-90)")
-        .attr("y", -40)
+        .attr("y", -50)
         .attr("x", -innerHeight / 2)
         .attr("fill", "black")
         .style("text-anchor", "middle")
-        .text(currentMetric === 'depth' ? "Depth Value" : "Rate Value");
+        .text(currentMetric === 'depth' ? "Water Depth (ft)" : "Flow Rate (cfs)");
     
     // Add vertical line separating historical and forecast
-    const separatorX = xScale(historicalData.length - 0.5);
-    g.append("line")
-        .attr("x1", separatorX)
-        .attr("y1", 0)
-        .attr("x2", separatorX)
-        .attr("y2", innerHeight)
-        .attr("stroke", "#999")
-        .attr("stroke-dasharray", "5,5")
-        .attr("opacity", 0.7);
-    
-    // Add label for the separator
-    g.append("text")
-        .attr("x", separatorX)
-        .attr("y", -5)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#999")
-        .style("font-size", "12px")
-        .text("Forecast Start");
+    if (forecastToShow.length > 0) {
+        const separatorX = xScale(historicalData.length - 0.5);
+        g.append("line")
+            .attr("x1", separatorX)
+            .attr("y1", 0)
+            .attr("x2", separatorX)
+            .attr("y2", innerHeight)
+            .attr("stroke", "#999")
+            .attr("stroke-dasharray", "5,5")
+            .attr("opacity", 0.7);
+        
+        // Add label for the separator
+        g.append("text")
+            .attr("x", separatorX)
+            .attr("y", -5)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#999")
+            .style("font-size", "12px")
+            .text("Forecast Start");
+    }
     
     // Draw historical line
-    if (historicalData.length > 0) {
-        g.append("path")
-            .datum(historicalData)
-            .attr("fill", "none")
-            .attr("stroke", "steelblue")
-            .attr("stroke-width", 2.5)
-            .attr("d", historicalLine);
-    }
+    g.append("path")
+        .datum(historicalData)
+        .attr("fill", "none")
+        .attr("stroke", "steelblue")
+        .attr("stroke-width", 2.5)
+        .attr("d", historicalLine);
     
     // Draw forecast line
     if (forecastToShow.length > 0) {
         // Connect historical to forecast with a dashed line
         const connectionData = [
             historicalData[historicalData.length - 1],
-            {...forecastToShow[0], time: historicalData.length}
+            forecastToShow[0]
         ];
         
         g.append("path")
@@ -506,14 +463,14 @@ function updateForecastVisualization() {
             .attr("d", forecastLine);
     }
     
-    // Add dots for data points
+    // Add dots for historical data points
     g.selectAll(".historical-dot")
         .data(historicalData)
         .enter()
         .append("circle")
         .attr("class", "historical-dot")
         .attr("cx", d => xScale(d.time))
-        .attr("cy", d => yScale(d[currentMetric]))
+        .attr("cy", d => yScale(d.value))
         .attr("r", 4)
         .attr("fill", "steelblue")
         .attr("stroke", "white")
@@ -522,8 +479,10 @@ function updateForecastVisualization() {
             d3.select(this).attr("r", 6);
             forecastTooltip
                 .html(`<strong>Historical - ${selectedNode}</strong><br>
-                       Time: t${d.time + 1}<br>
-                       ${currentMetric === 'depth' ? 'Depth' : 'Rate'}: ${d[currentMetric].toFixed(2)}`)
+                       Period: ${d.period}<br>
+                       Value: ${d.value.toFixed(3)} ${currentMetric === 'depth' ? 'ft' : 'cfs'}<br>
+                       Start: ${d.period_start}<br>
+                       End: ${d.period_end}`)
                 .style("left", (event.pageX + 10) + "px")
                 .style("top", (event.pageY - 20) + "px")
                 .style("opacity", 1);
@@ -533,6 +492,7 @@ function updateForecastVisualization() {
             forecastTooltip.style("opacity", 0);
         });
     
+    // Add dots for forecast data points
     if (forecastToShow.length > 0) {
         g.selectAll(".forecast-dot")
             .data(forecastToShow)
@@ -540,7 +500,7 @@ function updateForecastVisualization() {
             .append("circle")
             .attr("class", "forecast-dot")
             .attr("cx", d => xScale(d.time))
-            .attr("cy", d => yScale(d[currentMetric]))
+            .attr("cy", d => yScale(d.value))
             .attr("r", 4)
             .attr("fill", "orange")
             .attr("stroke", "white")
@@ -549,8 +509,9 @@ function updateForecastVisualization() {
                 d3.select(this).attr("r", 6);
                 forecastTooltip
                     .html(`<strong>Forecast - ${selectedNode}</strong><br>
-                           Time: t${d.time + 1}<br>
-                           ${currentMetric === 'depth' ? 'Depth' : 'Rate'}: ${d[currentMetric].toFixed(2)}`)
+                           Period: ${d.period}<br>
+                           Value: ${d.value.toFixed(3)} ${currentMetric === 'depth' ? 'ft' : 'cfs'}<br>
+                           Type: Predicted`)
                     .style("left", (event.pageX + 10) + "px")
                     .style("top", (event.pageY - 20) + "px")
                     .style("opacity", 1);
@@ -563,7 +524,7 @@ function updateForecastVisualization() {
     
     // Add legend
     const legend = g.append("g")
-        .attr("transform", `translate(${innerWidth - 100}, 20)`);
+        .attr("transform", `translate(${innerWidth - 120}, 20)`);
     
     // Historical legend
     legend.append("line")
@@ -585,6 +546,7 @@ function updateForecastVisualization() {
     legend.append("text")
         .attr("x", 25)
         .attr("y", 5)
+        .style("font-size", "12px")
         .text("Historical");
     
     // Forecast legend
@@ -607,6 +569,7 @@ function updateForecastVisualization() {
     legend.append("text")
         .attr("x", 25)
         .attr("y", 25)
+        .style("font-size", "12px")
         .text("Forecast");
     
     // Add current value display
@@ -616,27 +579,22 @@ function updateForecastVisualization() {
     currentValue.append("rect")
         .attr("x", -5)
         .attr("y", -15)
-        .attr("width", 150)
+        .attr("width", 200)
         .attr("height", 30)
         .attr("fill", "white")
         .attr("stroke", "#ddd")
         .attr("rx", 3);
     
-    if (historicalData.length > 0) {
-        const lastHistorical = historicalData[historicalData.length - 1];
-        currentValue.append("text")
-            .attr("x", 5)
-            .attr("y", 5)
-            .style("font-size", "14px")
-            .text(`Current: ${lastHistorical[currentMetric].toFixed(2)}`);
-    }
+    const lastHistorical = historicalData[historicalData.length - 1];
+    currentValue.append("text")
+        .attr("x", 5)
+        .attr("y", 5)
+        .style("font-size", "14px")
+        .text(`Current: ${lastHistorical.value.toFixed(3)} ${currentMetric === 'depth' ? 'ft' : 'cfs'}`);
 }
 
 // Initialize when page loads
-document.addEventListener("DOMContentLoaded", async function() {
-    // Load CSV data first
-    await loadCSVData();
-    
+document.addEventListener("DOMContentLoaded", function() {
     // Wait a bit to ensure the container exists
     setTimeout(initForecastChart, 100);
 });
