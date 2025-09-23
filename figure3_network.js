@@ -1,5 +1,10 @@
 const tooltip = d3.select("#tooltip");
 
+// Rotation parameter - set to 35 degrees
+const ROTATION_ANGLE = 55;
+// Zoom parameter - set to 1.2 (120% zoom)
+const ZOOM_FACTOR = 0.9;
+
 Promise.all([
   d3.csv("WW01_node.csv"),
   d3.csv("WW01_pipe.csv")
@@ -21,7 +26,7 @@ Promise.all([
   
   // Add the background image
   pattern.append("image")
-    .attr("xlink:href", "figure_png/map_crop.jpg")
+    .attr("xlink:href", "figure_png/sample_img.jpg")
     .attr("width", width)
     .attr("height", height)
     .attr("preserveAspectRatio", "xMidYMid slice");
@@ -46,11 +51,14 @@ Promise.all([
     .style("font-size", "16px")
     .style("font-weight", "bold")
     .style("fill", "#2c3e50")
-    .text("Campus Sewer Network Graph Structure");
+    .text(`Campus Sewer Network Graph Structure (Rotated ${ROTATION_ANGLE}°, Zoom ${(ZOOM_FACTOR * 100).toFixed(0)}%)`);
   
-  // Create main group for better organization
+  // Create main group for better organization with rotation and zoom applied
   const g = svg.append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`);
+    .attr("transform", `translate(${width/2},${height/2}) scale(${ZOOM_FACTOR}) rotate(${ROTATION_ANGLE}) translate(${-width/2 + margin.left},${-height/2 + margin.top})`);
+  
+  // Create separate group for legend that doesn't rotate or zoom
+  const legendGroup = svg.append("g");
   
   // Adjusted scales with margins
   const innerWidth = width - margin.left - margin.right;
@@ -265,16 +273,16 @@ Promise.all([
     .style("pointer-events", "none")
     .style("text-shadow", "1px 1px 2px rgba(255,255,255,0.8)");
   
-  // Add legend with improved styling
-  const legend = g.append("g")
-    .attr("transform", `translate(${innerWidth - 140}, ${innerHeight - 90})`);
+  // Add legend with improved styling (positioned independently, no rotation/zoom)
+  const legend = legendGroup.append("g")
+    .attr("transform", `translate(${width - 160}, ${height - 110})`);
   
   // Legend background with map-like styling
   legend.append("rect")
     .attr("x", -15)
     .attr("y", -15)
     .attr("width", 150)
-    .attr("height", 80)
+    .attr("height", 75)
     .attr("fill", "rgba(248, 249, 250, 0.95)")
     .attr("stroke", "#adb5bd")
     .attr("stroke-width", 1)
@@ -320,9 +328,27 @@ Promise.all([
   legend.append("text")
     .attr("x", 0)
     .attr("y", 60)
-    .text("✓ Overlap resolved")
+    // .text("✓ Overlap resolved")
     .style("font-size", "10px")
     .style("fill", "#28a745")
+    .style("font-weight", "500");
+  
+  // Add rotation indicator
+  legend.append("text")
+    .attr("x", 0)
+    .attr("y", 80)
+    // .text(`↻ Rotated ${ROTATION_ANGLE}°`)
+    .style("font-size", "10px")
+    .style("fill", "#6f42c1")
+    .style("font-weight", "500");
+  
+  // Add zoom indicator
+  legend.append("text")
+    .attr("x", 0)
+    .attr("y", 100)
+    // .text(`🔍 Zoom ${(ZOOM_FACTOR * 100).toFixed(0)}%`)
+    .style("font-size", "10px")
+    .style("fill", "#17a2b8")
     .style("font-weight", "500");
   
   // Add axes labels with improved styling
