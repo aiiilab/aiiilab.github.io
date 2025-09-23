@@ -26,7 +26,7 @@ Promise.all([
   
   // Add the background image
   pattern.append("image")
-    .attr("xlink:href", "figure_png/sample_img.jpg")
+    .attr("xlink:href", "sample_img.jpg")
     .attr("width", width)
     .attr("height", height)
     .attr("preserveAspectRatio", "xMidYMid slice");
@@ -367,4 +367,5 @@ Promise.all([
     .style("fill", "#495057")
     .style("font-weight", "500")
     .text("Y Coordinate (meters)");
+
 });
